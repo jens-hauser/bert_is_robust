@@ -28,7 +28,26 @@ def get_perturbed_batch(
     embedding,
     device,
 ):
+    """
+    Generates a batch of perturbed inputs based on the provided input batch. It computes the attribution scores and 
+    replaces a percentage of words with their nearest neighbors in the embedding space.
 
+    Args:
+    - input_ids_batch, token_type_ids_batch, attention_mask_batch, labels_batch: Batches of input IDs, token type IDs, attention masks, and labels.
+    - pert_percentage (float): The percentage of words to perturb in each input.
+    - n_candidates (int): Number of nearest neighbor candidates to consider for perturbation.
+    - cos_sim_thres (float): Cosine similarity threshold for selecting perturbation candidates.
+    - probas (list): Probabilities associated with each word for perturbation.
+    - filter_words (list): Words to exclude from perturbation.
+    - max_length (int): Maximum length of tokenized inputs.
+    - model (torch.nn.Module): The PyTorch model to use for attribution scoring.
+    - tokenizer (transformers.PreTrainedTokenizer): Tokenizer for encoding text.
+    - embedding: Embedding matrix used for finding nearest neighbors.
+    - device (torch.device): The device to run the model on.
+
+    Returns:
+    - Tuple of torch.Tensor: Batch of perturbed input IDs, token type IDs, and attention masks.
+    """
     attributions, all_tokens = attribution_scores_grad(
         model,
         tokenizer,
@@ -108,6 +127,15 @@ def get_perturbed_batch(
 
 
 def summarize_attributions(attributions):
+    """
+    Summarizes attribution scores by summing across tokens and normalizing.
+
+    Args:
+    - attributions (torch.Tensor): Attribution scores for each token.
+
+    Returns:
+    - torch.Tensor: Normalized summary of attribution scores.
+    """
     attributions = attributions.sum(dim=-1).squeeze(0)
     attributions = attributions / torch.norm(attributions)
     return attributions
@@ -116,6 +144,19 @@ def summarize_attributions(attributions):
 def attribution_scores_grad(
     model, tokenizer, input_ids, token_type_ids, attention_mask, ground_truth, device
 ):
+    """
+    Computes attribution scores for each token in the input using gradient-based methods.
+
+    Args:
+    - model (torch.nn.Module): The PyTorch model to use for attribution scoring.
+    - tokenizer (transformers.PreTrainedTokenizer): Tokenizer for encoding text.
+    - input_ids, token_type_ids, attention_mask: Tensors representing batches of input IDs, token type IDs, and attention masks.
+    - ground_truth: Ground truth labels for the input data.
+    - device (torch.device): The device to run the model on.
+
+    Returns:
+    - Tuple: Summarized attribution scores and list of tokens for each input in the batch.
+    """
     position_ids = torch.arange(input_ids.shape[1], dtype=torch.long, device=device)
     position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
 
@@ -148,8 +189,15 @@ def attribution_scores_grad(
 
 
 def recover_word_case(word, reference_word):
-    """Makes the case of `word` like the case of `reference_word`.
-    Supports lowercase, UPPERCASE, and Capitalized.
+    """
+    Adjusts the case of 'word' to match the case pattern of 'reference_word'.
+
+    Args:
+    - word (str): The word to adjust.
+    - reference_word (str): The reference word whose case pattern is to be matched.
+
+    Returns:
+    - str: The adjusted word with the case pattern of the reference word.
     """
     if reference_word.islower():
         return word.lower()
@@ -163,7 +211,19 @@ def recover_word_case(word, reference_word):
 
 
 def get_random_replacement(word, embedding, n_candidates, cos_sim_thres, version):
+    """
+    Selects a random replacement for a given word based on nearest neighbors in the embedding space.
 
+    Args:
+    - word (str): The word to be replaced.
+    - embedding: The embedding model used for finding nearest neighbors.
+    - n_candidates (int): Number of nearest neighbor candidates to consider.
+    - cos_sim_thres (float): Cosine similarity threshold for selecting candidates.
+    - version (str): Specifies the version of replacement strategy.
+
+    Returns:
+    - str: A replacement word.
+    """
     word_id = embedding.word2index(word.lower())
     nnids = embedding.nearest_neighbours(word_id, n_candidates)
     candidate_words = dict()
@@ -217,7 +277,24 @@ def get_perturbed_input(
     n_versions=8,
     version="cv",
 ):
+    """
+    Generates perturbed inputs for a batch of data. It randomly selects words for perturbation and replaces them based on specified strategies.
 
+    Args:
+    - tokenizer (transformers.PreTrainedTokenizer): The tokenizer to use.
+    - input_ids_batch (torch.Tensor): Batch of input IDs.
+    - pert_percentage (float): Percentage of words to perturb.
+    - embedding: Embedding model for finding replacements.
+    - n_candidates (int): Number of candidate replacements.
+    - cos_sim_thres (float): Cosine similarity threshold for selecting replacements.
+    - max_length (int): Maximum sequence length.
+    - filter_words (list): Words to exclude from perturbation.
+    - n_versions (int, optional): Number of perturbation versions to generate. Defaults to 8.
+    - version (str, optional): Perturbation strategy. Defaults to "cv".
+
+    Returns:
+    - Tuple of torch.Tensor: Perturbed input IDs, token type IDs, and attention masks.
+    """
     indices = input_ids_batch.detach().tolist()
 
     for i, in_ids in enumerate(indices):
@@ -286,6 +363,19 @@ def get_perturbed_input(
 def get_random_replacement_simple(
     word, embedding, n_candidates, cos_sim_thres, version
 ):
+    """
+    Provides a simple random replacement for a word from its nearest neighbors in the embedding space.
+
+    Args:
+    - word (str): The word to be replaced.
+    - embedding: The embedding model used for finding nearest neighbors.
+    - n_candidates (int): Number of nearest neighbor candidates to consider.
+    - cos_sim_thres (float): Cosine similarity threshold for selecting candidates.
+    - version (str): Version of the replacement strategy.
+
+    Returns:
+    - str: A replacement word.
+    """
     if version == "mask":
         return "[MASK]"
     elif version == "wordnet":
@@ -317,8 +407,15 @@ def get_random_replacement_simple(
 
 
 def get_replacement_wordnet(word):
-    """Returns a list containing all possible words with 1 character
-    replaced by a homoglyph."""
+    """
+    Retrieves a random synonym for a given word using WordNet.
+
+    Args:
+    - word (str): The word for which to find synonyms.
+
+    Returns:
+    - str: A synonym of the given word.
+    """
     synonyms = set()
     for syn in wordnet.synsets(word, lang="eng"):
         for syn_word in syn.lemma_names(lang="eng"):
@@ -335,7 +432,17 @@ def get_replacement_wordnet(word):
 
 
 def prepare_train_and_test_data(dataset, max_length, tokenizer):
+    """
+    Prepares and encodes train and test datasets for model training and evaluation.
 
+    Args:
+    - dataset (str): The name of the dataset to load.
+    - max_length (int): Maximum token length for encoding.
+    - tokenizer (transformers.PreTrainedTokenizer): The tokenizer to use for encoding.
+
+    Returns:
+    - Tuple: Encoded train and test datasets.
+    """
     train_dataset, test_dataset = load_dataset(dataset, split=["train", "test"])
     if dataset == "yelp_polarity":
         ## we only keep text documents shorter 80 words, to keep it simpler for human evaluations
